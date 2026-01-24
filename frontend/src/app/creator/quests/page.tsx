@@ -1,6 +1,6 @@
-import QuestHeader from "./components/QuestHeader";
-import Questlist from "./components/Questlist";
-import Quests from "./components/Quests";
+import QuestHeader from "@/features/creators/QuestHeader";
+import Questlist from "@/features/creators/Questlist";
+import Quests from "@/features/creators/Quests";
 
 export default function QuestsPage() {
   return (

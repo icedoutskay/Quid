@@ -55,8 +55,8 @@ export default function Sidebar() {
 
         <nav className="flex flex-col gap-4">
           <Link
-            href="/dashboard"
-            className={linkClasses("/dashboard")}
+            href="/creator"
+            className={linkClasses("/creator")}
             onClick={() => setIsOpen(false)}
           >
             <TbLayoutDashboard size={18} />
@@ -64,8 +64,8 @@ export default function Sidebar() {
           </Link>
 
           <Link
-            href="/dashboard/quests"
-            className={linkClasses("/dashboard/quests")}
+            href="/creator/quests"
+            className={linkClasses("/creator/quests")}
             onClick={() => setIsOpen(false)}
           >
             <RiFileList3Line size={18} />
@@ -73,8 +73,8 @@ export default function Sidebar() {
           </Link>
 
           <Link
-            href="/dashboard/wallet"
-            className={linkClasses("/dashboard/wallet")}
+            href="/creator/wallet"
+            className={linkClasses("/creator/wallet")}
             onClick={() => setIsOpen(false)}
           >
             <BiSolidWallet size={18} />
