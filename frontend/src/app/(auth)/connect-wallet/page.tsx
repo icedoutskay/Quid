@@ -33,7 +33,7 @@ export default function ConnectWalletPage() {
 
         if (address && address !== "" && isConnected) {
             // Change this later to desired page
-            push("/")
+            push("/account-type")
         }
     }
 
