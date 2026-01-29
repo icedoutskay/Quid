@@ -2,6 +2,7 @@
 use soroban_sdk::{contract, contractimpl, vec, Env, String, Vec};
 
 mod types;
+mod error;
 
 #[contract]
 pub struct Contract;
