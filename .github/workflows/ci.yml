@@ -1,116 +1,69 @@
-name: Monorepo CI
+name: Quid Monorepo CI
 
 on:
   push:
     branches: ["main"]
+    paths:
+      - 'quid-contract/**'
+      - 'frontend/**'
+      - '.github/workflows/**'
   pull_request:
     branches: ["main"]
 
 jobs:
-  # JOB 1: SMART CONTRACTS
+  # ---------------------------------------------------
+  # JOB 1: SMART CONTRACTS (Rust)
+  # ---------------------------------------------------
   contracts:
-    name: Contract Tests (Rust)
+    name: Smart Contracts
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./quid-contract
+    
     steps:
-      - name: Checkout repository
-      - uses: actions/checkout@v4
-
-      - name: Check for contract changes
-        uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            contracts:
-              - 'quid-contract/**'
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Install Rust
-        if: steps.changes.outputs.contracts == 'true' || github.event_name == 'push'
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: stable
-          components: clippy, rustfmt
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
 
-      - name: Install WASM target
-        run: rustup target add wasm32-unknown-unknown
-
-      - name: Install Stellar CLI
-        run: |
-          if ! command -v brew &> /dev/null; then
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_ENV
-          fi
-          brew install stellar-cli
-          stellar --version
-
-      - name: Cache Cargo registry
-        if: steps.changes.outputs.contracts == 'true' || github.event_name == 'push'
-        uses: actions/cache@v4
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            quid-contract/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          workspaces: "quid-contract"
 
-      - name: Check Formatting
-        if: steps.changes.outputs.contracts == 'true' || github.event_name == 'push'
-        run: cargo fmt --check
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
-      - name: Linting
-        if: steps.changes.outputs.contracts == 'true' || github.event_name == 'push'
+      - name: Linting (Clippy)
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Build contracts
-        run: |
-          cargo build --target wasm32-unknown-unknown --release
-          ls -la target/wasm32-unknown-unknown/release/
-          for file in target/wasm32-unknown-unknown/release/*.wasm; do
-            if [ -f "$file" ]; then
-              size=$(stat -f%z "$file")
-              echo "Contract size: $size bytes"
-              if [ $size -gt 1048576 ]; then
-                echo "Error: Contract size exceeds 1MB limit"
-                exit 1
-              fi
-            fi
-          done
+      - name: Build Contracts
+        run: cargo build --target wasm32-unknown-unknown --release
 
-      - name: Run Tests
-        if: steps.changes.outputs.contracts == 'true' || github.event_name == 'push'
+      - name: Run Contract Tests
         run: cargo test
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: contract-wasm
-          path: /target/wasm32-unknown-unknown/release/*.wasm
-          retention-days: 4
-
-  # JOB 2: FRONTEND
+  # ---------------------------------------------------
+  # JOB 2: FRONTEND (Next.js)
+  # ---------------------------------------------------
   frontend:
-    name: Frontend Build (Next.js)
+    name: Frontend Build
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./frontend
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Check for frontend changes
-        uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            frontend:
-              - 'frontend/**'
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        if: steps.changes.outputs.frontend == 'true' || github.event_name == 'push'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -118,13 +71,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install Dependencies
-        if: steps.changes.outputs.frontend == 'true' || github.event_name == 'push'
         run: npm ci
 
-      - name: Lint
-        if: steps.changes.outputs.frontend == 'true' || github.event_name == 'push'
+      - name: Linting
         run: npm run lint
 
-      - name: Type Check & Build
-        if: steps.changes.outputs.frontend == 'true' || github.event_name == 'push'
+      - name: Build Frontend
         run: npm run build
