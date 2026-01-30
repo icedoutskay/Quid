@@ -1,8 +1,8 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, vec, Env, String, Vec};
 
-mod types;
 mod error;
+mod types;
 
 #[contract]
 pub struct Contract;
