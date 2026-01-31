@@ -3,20 +3,30 @@
 use super::*;
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 use types::MissionStatus;
+use soroban_sdk::token::{self, Client as TokenClient};
 
 /// Helper function to create test environment and register contract
 fn setup_test_env() -> (Env, Address, Address, Address) {
     let env = Env::default();
-    let contract_id = env.register(QuidStoreContract, ());
-
-    // Mock the auth for testing
     env.mock_all_auths();
 
-    let owner = Address::generate(&env);
-    let token_address = Address::generate(&env);
+    // Deploy QuidStore contract
+    let contract_id = env.register(QuidStoreContract, ());
 
-    (env, contract_id, owner, token_address)
+    // Create addresses
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+
+    // Deploy a real Stellar token contract
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_id);
+
+    // Mint a large balance to owner (for escrow tests)
+    token_client.mint(&token_admin, &owner, &1_000_000_000_000);
+
+    (env, contract_id, owner, token_id)
 }
+
 
 #[test]
 fn test_create_mission_success() {
@@ -176,24 +186,22 @@ fn test_create_mission_with_unlimited_participants() {
     assert_eq!(mission.max_participants, 0);
 }
 
-#[test]
-fn test_create_mission_with_zero_reward() {
+     #[test]
+#[should_panic]
+fn test_create_mission_with_zero_reward_fails() {
     let (env, contract_id, owner, token_address) = setup_test_env();
     let client = QuidStoreContractClient::new(&env, &contract_id);
 
-    // Zero reward should be valid (free missions)
-    let mission_id = client.create_mission(
+    client.create_mission(
         &owner,
         &String::from_str(&env, "Free Mission"),
         &String::from_str(&env, "QmDesc"),
         &token_address,
-        &0, // Zero reward
+        &0,
         &50,
     );
-
-    let mission = client.get_mission(&mission_id);
-    assert_eq!(mission.reward_amount, 0);
 }
+
 
 #[test]
 fn test_mission_owner_authentication() {
@@ -324,3 +332,29 @@ fn test_multiple_owners_create_missions() {
     assert_eq!(mission_2.owner, owner2);
     assert_ne!(mission_1.owner, mission_2.owner);
 }
+
+#[test]
+fn test_escrow_balance_after_mission_creation() {
+    let (env, contract_id, owner, token_id) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+    let token_client = TokenClient::new(&env, &token_id);
+
+    let reward_amount = 10_000_000;
+    let max_participants = 5;
+    let total_needed = reward_amount * max_participants as i128;
+
+    client.create_mission(
+        &owner,
+        &String::from_str(&env, "Escrow Test"),
+        &String::from_str(&env, "QmDesc"),
+        &token_id,
+        &reward_amount,
+        &max_participants,
+    );
+
+    let contract_balance =
+        token_client.balance(&env.current_contract_address());
+
+    assert_eq!(contract_balance, total_needed);
+}
+
