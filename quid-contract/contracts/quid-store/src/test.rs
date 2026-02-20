@@ -345,6 +345,84 @@ fn test_multiple_owners_create_missions() {
 }
 
 #[test]
+fn test_cancel_mission_success() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Cancel Test Mission"),
+        &String::from_str(&env, "QmDesc"),
+        &token_address,
+        &10_000_000,
+        &50,
+    );
+
+    // Cancel the mission
+    client.cancel_mission(&mission_id);
+
+    // Verify status is now Cancelled
+    let mission = client.get_mission(&mission_id);
+    assert_eq!(mission.status, MissionStatus::Cancelled);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_cancel_mission_fails_if_completed() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Completed Mission"),
+        &String::from_str(&env, "QmDesc"),
+        &token_address,
+        &10_000_000,
+        &50,
+    );
+
+    // Set mission to Completed first
+    client.update_mission_status(&mission_id, &MissionStatus::Completed);
+
+    // Attempting to cancel a completed mission should fail with InvalidState (#8)
+    client.cancel_mission(&mission_id);
+}
+
+#[test]
+fn test_cancel_mission_from_started_status() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Started Mission"),
+        &String::from_str(&env, "QmDesc"),
+        &token_address,
+        &10_000_000,
+        &50,
+    );
+
+    // Move to Started
+    client.update_mission_status(&mission_id, &MissionStatus::Started);
+
+    // Cancel from Started should succeed
+    client.cancel_mission(&mission_id);
+
+    let mission = client.get_mission(&mission_id);
+    assert_eq!(mission.status, MissionStatus::Cancelled);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_cancel_mission_not_found() {
+    let (env, contract_id, _owner, _token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    // Cancelling a non-existent mission should fail with MissionNotFound (#1)
+    client.cancel_mission(&999);
+}
+
+#[test]
 fn test_escrow_balance_after_mission_creation() {
     let (env, contract_id, owner, token_id) = setup_test_env();
     let client = QuidStoreContractClient::new(&env, &contract_id);
