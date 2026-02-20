@@ -10,4 +10,5 @@ pub enum QuidError {
     InsufficientFunds = 5,
     NotAuthorized = 6,
     NegativeReward = 7,
+    InvalidState = 8,
 }

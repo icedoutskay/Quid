@@ -187,6 +187,42 @@ impl QuidStoreContract {
         Ok(())
     }
 
+    /// Cancels a mission permanently, closing it to new submissions
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `id` - The unique mission identifier
+    ///
+    /// # Returns
+    /// `Ok(())` on success or an error
+    ///
+    /// # Errors
+    /// * `QuidError::MissionNotFound` - If mission doesn't exist
+    /// * `QuidError::InvalidState` - If mission is already `Completed`
+    pub fn cancel_mission(env: Env, id: u64) -> Result<(), QuidError> {
+        // 1. Load mission
+        let mut mission = Self::get_mission(env.clone(), id)?;
+
+        // 2. Authenticate owner
+        mission.owner.require_auth();
+
+        // 3. Validate current state
+        if mission.status == MissionStatus::Completed {
+            return Err(QuidError::InvalidState);
+        }
+
+        // 4. Update status
+        mission.status = MissionStatus::Cancelled;
+
+        // 5. Save to persistent storage
+        env.storage()
+            .persistent()
+            .set(&DataKey::Mission(id), &mission);
+
+        // 6. Return Ok
+        Ok(())
+    }
+
     // ========== Private Helper Methods ==========
 
     /// Validates mission creation parameters
