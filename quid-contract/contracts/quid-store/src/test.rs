@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{testutils::Address as _, vec, Address, Env, String};
 use types::MissionStatus;
 
 /// Helper function to create test environment and register contract
@@ -368,4 +368,182 @@ fn test_escrow_balance_after_mission_creation() {
     let contract_balance = token_client.balance(&contract_id);
 
     assert_eq!(contract_balance, total_needed);
+}
+
+// ===== Enhanced get_mission tests =====
+
+#[test]
+fn test_get_mission_returns_exact_struct() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    let title = String::from_str(&env, "Exact Struct Test");
+    let description_cid = String::from_str(&env, "QmExact123");
+    let reward_amount: i128 = 15_000_000;
+    let max_participants: u32 = 25;
+
+    let mission_id = client.create_mission(
+        &owner,
+        &title,
+        &description_cid,
+        &token_address,
+        &reward_amount,
+        &max_participants,
+    );
+
+    // Fetch the mission
+    let mission = client.get_mission(&mission_id);
+
+    // Verify all fields match exactly what was saved
+    assert_eq!(mission.id, mission_id);
+    assert_eq!(mission.owner, owner);
+    assert_eq!(mission.title, title);
+    assert_eq!(mission.description_cid, description_cid);
+    assert_eq!(mission.reward_token, token_address);
+    assert_eq!(mission.reward_amount, reward_amount);
+    assert_eq!(mission.max_participants, max_participants);
+    assert_eq!(mission.participants_count, 0);
+    assert_eq!(mission.status, MissionStatus::Created);
+    assert!(mission.created_at > 0);
+}
+
+#[test]
+fn test_get_missions_batch_query() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    // Create multiple missions
+    let mission_id_1 = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Batch Test 1"),
+        &String::from_str(&env, "QmBatch1"),
+        &token_address,
+        &10_000_000,
+        &10,
+    );
+
+    let mission_id_2 = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Batch Test 2"),
+        &String::from_str(&env, "QmBatch2"),
+        &token_address,
+        &20_000_000,
+        &20,
+    );
+
+    // Test existing missions
+    // Note: get_missions will panic on any error, so we can only test existing missions
+    let mission_ids = vec![&env, mission_id_1, mission_id_2];
+    let results = client.get_missions(&mission_ids);
+
+    // Verify we got results for both missions
+    assert_eq!(results.len(), 2);
+    
+    // Verify the results
+    let result_1 = results.get(0).unwrap();
+    let result_2 = results.get(1).unwrap();
+    
+    // Unwrap the results and verify
+    let mission_1 = result_1.unwrap();
+    let mission_2 = result_2.unwrap();
+    
+    assert_eq!(mission_1.id, mission_id_1);
+    assert_eq!(mission_2.id, mission_id_2);
+    assert_eq!(mission_1.title, String::from_str(&env, "Batch Test 1"));
+    assert_eq!(mission_2.title, String::from_str(&env, "Batch Test 2"));
+}
+
+#[test]
+fn test_mission_exists_function() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    // Create a mission
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Existence Test"),
+        &String::from_str(&env, "QmExist"),
+        &token_address,
+        &10_000_000,
+        &10,
+    );
+
+    // Test existing mission
+    assert!(client.mission_exists(&mission_id));
+    
+    // Test non-existent mission
+    assert!(!client.mission_exists(&999));
+    
+    // Test another non-existent mission
+    assert!(!client.mission_exists(&0));
+}
+
+#[test]
+fn test_get_mission_reward_optimized_query() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    let reward_amount: i128 = 25_000_000;
+    
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Reward Query Test"),
+        &String::from_str(&env, "QmReward"),
+        &token_address,
+        &reward_amount,
+        &15,
+    );
+
+    // Get reward details only - should succeed for existing mission
+    let (returned_token, returned_amount) = client.get_mission_reward(&mission_id);
+    
+    // Verify reward details match
+    assert_eq!(returned_token, token_address);
+    assert_eq!(returned_amount, reward_amount);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_get_mission_reward_not_found() {
+    let (env, contract_id, _owner, _token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+    
+    // This should panic with QuidError::MissionNotFound (error code #1)
+    client.get_mission_reward(&999);
+}
+
+#[test]
+fn test_get_mission_status_lightweight_query() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Status Query Test"),
+        &String::from_str(&env, "QmStatus"),
+        &token_address,
+        &10_000_000,
+        &10,
+    );
+
+    // Initial status should be Created
+    let status = client.get_mission_status(&mission_id);
+    assert_eq!(status, MissionStatus::Created);
+    
+    // Update status
+    client.update_mission_status(&mission_id, &MissionStatus::Started);
+    
+    // Verify status changed
+    let status = client.get_mission_status(&mission_id);
+    assert_eq!(status, MissionStatus::Started);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_get_mission_status_not_found() {
+    let (env, contract_id, _owner, _token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+    
+    // This should panic with QuidError::MissionNotFound (error code #1)
+    client.get_mission_status(&999);
 }

@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 
 mod error;
 mod types;
@@ -119,20 +119,144 @@ impl QuidStoreContract {
 
     /// Retrieves a mission by ID
     ///
+    /// Fetches the complete mission details from persistent storage.
+    /// This is a read-only view function for frontend UI to verify
+    /// mission details including reward amount, status, and metadata.
+    ///
     /// # Arguments
     /// * `env` - The contract environment
     /// * `mission_id` - The unique mission identifier
     ///
     /// # Returns
-    /// The mission data or an error if not found
+    /// The complete mission data structure containing all details
     ///
     /// # Errors
-    /// * `QuidError::MissionNotFound` - If mission doesn't exist
+    /// * `QuidError::MissionNotFound` - If no mission exists with the given ID
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mission = contract.get_mission(&env, &123);
+    /// println!("Reward: {}", mission.reward_amount);
+    /// println!("Status: {:?}", mission.status);
+    /// ```
     pub fn get_mission(env: Env, mission_id: u64) -> Result<Mission, QuidError> {
         env.storage()
             .persistent()
             .get(&DataKey::Mission(mission_id))
             .ok_or(QuidError::MissionNotFound)
+    }
+
+    /// Retrieves multiple missions by their IDs
+    ///
+    /// Batch query function to fetch multiple missions in a single call.
+    /// Useful for frontend dashboards that need to display multiple missions.
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `mission_ids` - Vector of mission IDs to fetch
+    ///
+    /// # Returns
+    /// Vector of mission results (either Mission or QuidError::MissionNotFound)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let missions = contract.get_missions(&env, &vec![&env, 1, 2, 3]);
+    /// for result in missions {
+    ///     match result {
+    ///         Ok(mission) => println!("Found: {}", mission.title),
+    ///         Err(_) => println!("Mission not found"),
+    ///     }
+    /// }
+    /// ```
+    pub fn get_missions(env: Env, mission_ids: Vec<u64>) -> Vec<Result<Mission, QuidError>> {
+        let mut results = Vec::new(&env);
+        
+        for mission_id in mission_ids.iter() {
+            let result = Self::get_mission(env.clone(), mission_id);
+            results.push_back(result);
+        }
+        
+        results
+    }
+
+    /// Checks if a mission exists
+    ///
+    /// Lightweight existence check without loading the full mission data.
+    /// Useful for frontend validation before performing operations.
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `mission_id` - The mission ID to check
+    ///
+    /// # Returns
+    /// `true` if mission exists, `false` otherwise
+    ///
+    /// # Example
+    /// ```ignore
+    /// if contract.mission_exists(&env, &123) {
+    ///     // Safe to proceed with get_mission
+    ///     let mission = contract.get_mission(&env, &123);
+    /// }
+    /// ```
+    pub fn mission_exists(env: Env, mission_id: u64) -> bool {
+        env.storage()
+            .persistent()
+            .has(&DataKey::Mission(mission_id))
+    }
+
+    /// Gets mission reward details only
+    ///
+    /// Optimized function to fetch only reward-related information.
+    /// Reduces data transfer for frontend components that only need
+    /// reward verification without full mission details.
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `mission_id` - The mission ID
+    ///
+    /// # Returns
+    /// Tuple of (reward_token_address, reward_amount) or error
+    ///
+    /// # Errors
+    /// * `QuidError::MissionNotFound` - If mission doesn't exist
+    ///
+    /// # Example
+    /// ```ignore
+    /// let (token, amount) = contract.get_mission_reward(&env, &123)?;
+    /// println!("Reward: {} of token {:?}", amount, token);
+    /// ```
+    pub fn get_mission_reward(env: Env, mission_id: u64) -> Result<(Address, i128), QuidError> {
+        let mission = Self::get_mission(env, mission_id)?;
+        Ok((mission.reward_token, mission.reward_amount))
+    }
+
+    /// Gets mission status only
+    ///
+    /// Lightweight function to fetch only the mission status.
+    /// Useful for frontend status indicators and filtering.
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `mission_id` - The mission ID
+    ///
+    /// # Returns
+    /// The current mission status or error
+    ///
+    /// # Errors
+    /// * `QuidError::MissionNotFound` - If mission doesn't exist
+    ///
+    /// # Example
+    /// ```ignore
+    /// let status = contract.get_mission_status(&env, &123)?;
+    /// match status {
+    ///     MissionStatus::Created => println!("Mission is open"),
+    ///     MissionStatus::Completed => println!("Mission finished"),
+    ///     _ => println!("Mission status: {:?}", status),
+    /// }
+    /// ```
+    pub fn get_mission_status(env: Env, mission_id: u64) -> Result<MissionStatus, QuidError> {
+        let mission = Self::get_mission(env, mission_id)?;
+        Ok(mission.status)
     }
 
     /// Gets the current mission count
