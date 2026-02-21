@@ -510,8 +510,19 @@ fn test_get_missions_batch_query() {
     let results = client.get_missions(&ids);
 
     assert_eq!(results.len(), 2);
-    assert_eq!(results.get(0).unwrap().unwrap().id, id1);
-    assert_eq!(results.get(1).unwrap().unwrap().id, id2);
+
+    // Verify the results
+    let result_1 = results.get(0).unwrap();
+    let result_2 = results.get(1).unwrap();
+
+    // Unwrap the results and verify
+    let mission_1 = result_1.unwrap();
+    let mission_2 = result_2.unwrap();
+
+    assert_eq!(mission_1.id, mission_id_1);
+    assert_eq!(mission_2.id, mission_id_2);
+    assert_eq!(mission_1.title, String::from_str(&env, "Batch Test 1"));
+    assert_eq!(mission_2.title, String::from_str(&env, "Batch Test 2"));
 }
 
 #[test]
@@ -529,7 +540,12 @@ fn test_mission_exists_function() {
     );
 
     assert!(client.mission_exists(&mission_id));
+
+    // Test non-existent mission
     assert!(!client.mission_exists(&999));
+
+    // Test another non-existent mission
+    assert!(!client.mission_exists(&0));
 }
 
 #[test]
@@ -550,8 +566,19 @@ fn test_get_mission_reward_optimized_query() {
 
     let (returned_token, returned_amount) = client.get_mission_reward(&mission_id);
 
+    // Verify reward details match
     assert_eq!(returned_token, token_address);
     assert_eq!(returned_amount, reward_amount);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_get_mission_reward_not_found() {
+    let (env, contract_id, _owner, _token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+
+    // This should panic with QuidError::MissionNotFound (error code #1)
+    client.get_mission_reward(&999);
 }
 
 #[test]
@@ -571,7 +598,10 @@ fn test_get_mission_status_lightweight_query() {
     let status = client.get_mission_status(&mission_id);
     assert_eq!(status, MissionStatus::Created);
 
+    // Update status
     client.update_mission_status(&mission_id, &MissionStatus::Started);
+
+    // Verify status changed
     let status = client.get_mission_status(&mission_id);
     assert_eq!(status, MissionStatus::Started);
 }
