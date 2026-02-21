@@ -60,10 +60,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Refund Test"
+                  "string": "Status Query Test"
                 },
                 {
-                  "string": "QmDesc"
+                  "string": "QmStatus"
                 },
                 {
                   "address": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN"
@@ -72,7 +72,7 @@
                   "i128": "10000000"
                 },
                 {
-                  "u32": 5
+                  "u32": 10
                 }
               ]
             }
@@ -91,7 +91,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                     },
                     {
-                      "i128": "50000000"
+                      "i128": "100000000"
                     }
                   ]
                 }
@@ -110,10 +110,17 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "cancel_mission",
+              "function_name": "update_mission_status",
               "args": [
                 {
                   "u64": "1"
+                },
+                {
+                  "vec": [
+                    {
+                      "symbol": "Started"
+                    }
+                  ]
                 }
               ]
             }
@@ -122,7 +129,6 @@
         }
       ]
     ],
-    [],
     []
   ],
   "ledger": {
@@ -246,7 +252,7 @@
                         "symbol": "description_cid"
                       },
                       "val": {
-                        "string": "QmDesc"
+                        "string": "QmStatus"
                       }
                     },
                     {
@@ -262,7 +268,7 @@
                         "symbol": "max_participants"
                       },
                       "val": {
-                        "u32": 5
+                        "u32": 10
                       }
                     },
                     {
@@ -304,7 +310,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "Cancelled"
+                            "symbol": "Started"
                           }
                         ]
                       }
@@ -314,7 +320,7 @@
                         "symbol": "title"
                       },
                       "val": {
-                        "string": "Refund Test"
+                        "string": "Status Query Test"
                       }
                     }
                   ]
@@ -512,7 +518,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "0"
+                        "i128": "100000000"
                       }
                     },
                     {
@@ -582,7 +588,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000000000000"
+                        "i128": "999900000000"
                       }
                     },
                     {
