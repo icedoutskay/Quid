@@ -228,9 +228,27 @@ impl QuidStoreContract {
         ipfs_cid: String,
     ) -> Result<(), QuidError> {
         hunter.require_auth();
+
+        let mut mission = Self::get_mission(env.clone(), mission_id)?;
+
+        if mission.status != MissionStatus::Open {
+            return Err(QuidError::MissionNotOpen);
+        }
+
+        if mission.participants_count >= mission.max_participants {
+            return Err(QuidError::MissionFull);
+        }
+
         env.storage()
             .persistent()
             .set(&DataKey::Submission(mission_id, hunter.clone()), &ipfs_cid);
+
+        // Increment count so subsequent submissions respect the cap.
+        mission.participants_count += 1;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Mission(mission_id), &mission);
+
         Ok(())
     }
 

@@ -5,6 +5,7 @@ use soroban_sdk::{contracttype, Address, String};
 pub enum MissionStatus {
     #[default]
     Created,
+    Open,
     Started,
     Paused,
     Completed,
