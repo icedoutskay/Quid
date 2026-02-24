@@ -1086,7 +1086,7 @@ fn test_payout_participant_success() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #10)")]
+#[should_panic(expected = "Error(Contract, #11)")]
 fn test_payout_participant_submission_not_found() {
     let (env, contract_id, owner, token_id) = setup_test_env();
     let client = QuidStoreContractClient::new(&env, &contract_id);
