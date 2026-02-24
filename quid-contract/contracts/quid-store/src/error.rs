@@ -11,4 +11,7 @@ pub enum QuidError {
     NotAuthorized = 6,
     NegativeReward = 7,
     InvalidState = 8,
+    AlreadyPaid = 9,
+    SubmissionNotFound = 10,
+    NotPending = 11,
 }
