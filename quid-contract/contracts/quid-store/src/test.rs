@@ -772,9 +772,9 @@ mod submit_feedback_tests {
 
         // First hunter fills the last slot.
         let hunter_1 = Address::generate(&env);
-        client
+        let _feedback = client
             .try_submit_feedback(&mission_id, &hunter_1, &ipfs_cid(&env))
-            .unwrap();
+            .expect("submit feedback should succeed");
 
         // Second hunter must be rejected — mission is now full.
         let hunter_2 = Address::generate(&env);
