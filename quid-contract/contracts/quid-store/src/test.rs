@@ -20,6 +20,11 @@ fn setup_test_env() -> (Env, Address, Address, Address) {
     (env, contract_id, owner, token_address)
 }
 
+fn mint_tokens_for_hunter(env: &Env, token_address: &Address, hunter: &Address, amount: i128) {
+    let token_admin_client = StellarAssetClient::new(env, token_address);
+    token_admin_client.mint(hunter, &amount);
+}
+
 #[test]
 fn test_happy_path_create_submit_payout() {
     let (env, contract_id, owner, token_address) = setup_test_env();
@@ -28,6 +33,9 @@ fn test_happy_path_create_submit_payout() {
 
     let hunter = Address::generate(&env);
     let reward = 100;
+    let stake = 10;
+
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
 
     let mission_id = client.create_mission(
         &owner,
@@ -39,7 +47,7 @@ fn test_happy_path_create_submit_payout() {
     );
 
     let cid = String::from_str(&env, "QmSubmission");
-    client.submit_feedback(&mission_id, &hunter, &cid);
+    client.submit_feedback(&mission_id, &hunter, &cid, &token_address, &stake);
 
     let balance_before = token_client.balance(&hunter);
     client.payout_participant(&mission_id, &hunter);
@@ -58,6 +66,8 @@ fn test_prevent_double_submission() {
     let client = QuidStoreContractClient::new(&env, &contract_id);
     let hunter = Address::generate(&env);
 
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
     let mission_id = client.create_mission(
         &owner,
         &String::from_str(&env, "Double Sub Test"),
@@ -68,8 +78,8 @@ fn test_prevent_double_submission() {
     );
 
     let cid = String::from_str(&env, "QmFirst");
-    client.submit_feedback(&mission_id, &hunter, &cid);
-    client.submit_feedback(&mission_id, &hunter, &cid);
+    client.submit_feedback(&mission_id, &hunter, &cid, &token_address, &10);
+    client.submit_feedback(&mission_id, &hunter, &cid, &token_address, &10);
 }
 
 #[test]
@@ -120,10 +130,12 @@ fn test_mission_capacity_limit() {
 
     let hunter1 = Address::generate(&env);
     let hunter2 = Address::generate(&env);
+    mint_tokens_for_hunter(&env, &token_address, &hunter1, 1000);
+    mint_tokens_for_hunter(&env, &token_address, &hunter2, 1000);
     let cid = String::from_str(&env, "QmVal");
 
-    client.submit_feedback(&mission_id, &hunter1, &cid);
-    client.submit_feedback(&mission_id, &hunter2, &cid);
+    client.submit_feedback(&mission_id, &hunter1, &cid, &token_address, &10);
+    client.submit_feedback(&mission_id, &hunter2, &cid, &token_address, &10);
 
     client.payout_participant(&mission_id, &hunter1);
     client.payout_participant(&mission_id, &hunter2);
@@ -136,6 +148,8 @@ fn test_cannot_payout_twice() {
     let client = QuidStoreContractClient::new(&env, &contract_id);
     let hunter = Address::generate(&env);
 
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
     let mission_id = client.create_mission(
         &owner,
         &String::from_str(&env, "Double Pay"),
@@ -145,7 +159,13 @@ fn test_cannot_payout_twice() {
         &5,
     );
 
-    client.submit_feedback(&mission_id, &hunter, &String::from_str(&env, "Qm"));
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "Qm"),
+        &token_address,
+        &10,
+    );
     client.payout_participant(&mission_id, &hunter);
     client.payout_participant(&mission_id, &hunter);
 }
@@ -161,10 +181,17 @@ fn test_get_mission_not_found() {
 #[test]
 #[should_panic(expected = "Error(Contract, #1)")]
 fn test_submit_feedback_mission_not_found() {
-    let (env, contract_id, _owner, _token_address) = setup_test_env();
+    let (env, contract_id, _owner, token_address) = setup_test_env();
     let client = QuidStoreContractClient::new(&env, &contract_id);
     let hunter = Address::generate(&env);
-    client.submit_feedback(&999, &hunter, &String::from_str(&env, "Qm"));
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+    client.submit_feedback(
+        &999,
+        &hunter,
+        &String::from_str(&env, "Qm"),
+        &token_address,
+        &10,
+    );
 }
 
 #[test]
@@ -189,6 +216,8 @@ fn test_submit_feedback_when_paused() {
     let client = QuidStoreContractClient::new(&env, &contract_id);
     let hunter = Address::generate(&env);
 
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
     let mission_id = client.create_mission(
         &owner,
         &String::from_str(&env, "Pause Test"),
@@ -198,7 +227,13 @@ fn test_submit_feedback_when_paused() {
         &5,
     );
     client.pause_mission(&mission_id);
-    client.submit_feedback(&mission_id, &hunter, &String::from_str(&env, "Qm"));
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "Qm"),
+        &token_address,
+        &10,
+    );
 }
 
 #[test]
@@ -220,7 +255,14 @@ fn test_cancel_mission_partial_payouts_refund() {
     );
 
     let hunter = Address::generate(&env);
-    client.submit_feedback(&mission_id, &hunter, &String::from_str(&env, "QmSub"));
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "QmSub"),
+        &token_address,
+        &10,
+    );
     client.payout_participant(&mission_id, &hunter);
 
     let owner_balance_before_cancel = token_client.balance(&owner);
@@ -234,7 +276,7 @@ fn test_cancel_mission_partial_payouts_refund() {
     );
 
     let contract_balance = token_client.balance(&contract_id);
-    assert_eq!(contract_balance, 0);
+    assert_eq!(contract_balance, 10);
 
     let mission = client.get_mission(&mission_id);
     assert_eq!(mission.status, MissionStatus::Cancelled);
@@ -259,10 +301,106 @@ fn test_payout_without_submission() {
 }
 
 #[test]
+fn test_stake_deducted_on_submission() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+    let token_client = TokenClient::new(&env, &token_address);
+
+    let hunter = Address::generate(&env);
+    let stake_amount = 50;
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Stake Test"),
+        &String::from_str(&env, "QmDesc"),
+        &token_address,
+        &100,
+        &5,
+    );
+
+    let hunter_balance_before = token_client.balance(&hunter);
+    let contract_balance_before = token_client.balance(&contract_id);
+
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "QmSubmission"),
+        &token_address,
+        &stake_amount,
+    );
+
+    let hunter_balance_after = token_client.balance(&hunter);
+    let contract_balance_after = token_client.balance(&contract_id);
+
+    assert_eq!(hunter_balance_after, hunter_balance_before - stake_amount);
+    assert_eq!(
+        contract_balance_after,
+        contract_balance_before + stake_amount
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")]
+fn test_stake_invalid_amount_zero() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+    let hunter = Address::generate(&env);
+
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Invalid Stake"),
+        &String::from_str(&env, "QmDesc"),
+        &token_address,
+        &100,
+        &5,
+    );
+
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "QmSubmission"),
+        &token_address,
+        &0,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")]
+fn test_stake_invalid_amount_negative() {
+    let (env, contract_id, owner, token_address) = setup_test_env();
+    let client = QuidStoreContractClient::new(&env, &contract_id);
+    let hunter = Address::generate(&env);
+
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
+    let mission_id = client.create_mission(
+        &owner,
+        &String::from_str(&env, "Negative Stake"),
+        &String::from_str(&env, "QmDesc"),
+        &token_address,
+        &100,
+        &5,
+    );
+
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "QmSubmission"),
+        &token_address,
+        &-10,
+    );
+}
+
+#[test]
 fn test_update_submission_success() {
     let (env, contract_id, owner, token_address) = setup_test_env();
     let client = QuidStoreContractClient::new(&env, &contract_id);
     let hunter = Address::generate(&env);
+
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
 
     let mission_id = client.create_mission(
         &owner,
@@ -274,7 +412,7 @@ fn test_update_submission_success() {
     );
 
     let original_cid = String::from_str(&env, "QmOriginal");
-    client.submit_feedback(&mission_id, &hunter, &original_cid);
+    client.submit_feedback(&mission_id, &hunter, &original_cid, &token_address, &10);
 
     let new_cid = String::from_str(&env, "QmUpdated");
     client.update_submission(&mission_id, &hunter, &new_cid);
@@ -290,6 +428,8 @@ fn test_update_submission_after_payout() {
     let client = QuidStoreContractClient::new(&env, &contract_id);
     let hunter = Address::generate(&env);
 
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
     let mission_id = client.create_mission(
         &owner,
         &String::from_str(&env, "Update After Pay"),
@@ -299,7 +439,13 @@ fn test_update_submission_after_payout() {
         &5,
     );
 
-    client.submit_feedback(&mission_id, &hunter, &String::from_str(&env, "QmFirst"));
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "QmFirst"),
+        &token_address,
+        &10,
+    );
     client.payout_participant(&mission_id, &hunter);
 
     // Should fail: already paid
@@ -333,6 +479,8 @@ fn test_update_submission_mission_not_open() {
     let client = QuidStoreContractClient::new(&env, &contract_id);
     let hunter = Address::generate(&env);
 
+    mint_tokens_for_hunter(&env, &token_address, &hunter, 1000);
+
     let mission_id = client.create_mission(
         &owner,
         &String::from_str(&env, "Paused Update"),
@@ -342,7 +490,13 @@ fn test_update_submission_mission_not_open() {
         &5,
     );
 
-    client.submit_feedback(&mission_id, &hunter, &String::from_str(&env, "QmFirst"));
+    client.submit_feedback(
+        &mission_id,
+        &hunter,
+        &String::from_str(&env, "QmFirst"),
+        &token_address,
+        &10,
+    );
     client.pause_mission(&mission_id);
 
     // Should fail: mission is paused
