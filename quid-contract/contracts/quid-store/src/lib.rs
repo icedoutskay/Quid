@@ -131,7 +131,7 @@ impl QuidStoreContract {
         }
 
         let token_client = token::Client::new(&env, &stake_token);
-        token_client.transfer(&hunter, &env.current_contract_address(), &stake_amount);
+        token_client.transfer(&hunter, env.current_contract_address(), &stake_amount);
 
         let stake_key = DataKey::HunterStake(mission_id, hunter.clone());
         env.storage().persistent().set(&stake_key, &stake_amount);
