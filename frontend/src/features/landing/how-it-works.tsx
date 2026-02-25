@@ -117,7 +117,7 @@ export const HowItWorksSection = () => {
         whileInView="visible"
         viewport={{ once: true, amount: 0.2 }}
       >
-        {steps.map((step, index) => {
+        {steps.map((step) => {
           const isExpanded = expandedId === step.id;
 
           return (

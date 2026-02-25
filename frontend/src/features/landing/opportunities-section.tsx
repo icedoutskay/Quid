@@ -150,7 +150,7 @@ export default function OpportunitiesSection() {
             className="text-2xl sm:text-3xl md:text-4xl font-semibold bg-gradient-to-r from-purple-400 to-indigo-400 bg-clip-text text-transparent"
             variants={headerVariants}
           >
-            You've come to the right place.
+            You&apos;ve come to the right place.
           </motion.h3>
 
           <motion.p
