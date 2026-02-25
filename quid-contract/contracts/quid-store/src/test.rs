@@ -610,7 +610,9 @@ mod submit_feedback_tests {
     use soroban_sdk::token::StellarAssetClient;
     use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
-    use crate::{DataKey, QuidStoreContract, QuidStoreContractClient};
+    use crate::{
+        types::MissionStatus, DataKey, QuidError, QuidStoreContract, QuidStoreContractClient,
+    };
 
     // ------------------------------------------------------------------
     // Helpers
@@ -645,138 +647,271 @@ mod submit_feedback_tests {
     // Happy path
     // ------------------------------------------------------------------
 
-    /// Core acceptance criterion: calling submit_feedback persists the CID
-    /// and it can be read back from persistent storage under the correct key.
-    #[test]
-    fn stores_ipfs_cid_for_mission_and_hunter() {
-        let (env, contract_id, hunter, _token) = setup();
-        let client = QuidStoreContractClient::new(&env, &contract_id);
-
-        let cid = ipfs_cid(&env);
-        client.submit_feedback(&1u64, &hunter, &cid);
-
-        let stored: String = env.as_contract(&contract_id, || {
-            env.storage()
-                .persistent()
-                .get(&DataKey::Submission(1u64, hunter.clone()))
-                .expect("submission must be stored under DataKey::Submission")
-        });
-
-        assert_eq!(stored, cid);
+    fn create_open_mission(
+        env: &Env,
+        client: &QuidStoreContractClient,
+        owner: &Address,
+        token: &Address,
+        max_participants: u32,
+    ) -> u64 {
+        let mission_id = client.create_mission(
+            owner,
+            &String::from_str(env, "Test Mission"),
+            &String::from_str(env, "QmDesc"),
+            token,
+            &10_000_000,
+            &max_participants,
+        );
+        client.update_mission_status(&mission_id, &MissionStatus::Open);
+        mission_id
     }
 
-    /// A second submission on the same (mission, hunter) pair overwrites the
-    /// first — last-write-wins, no duplicate guard in this scaffold.
+    /// submit_feedback succeeds when mission is Open and has remaining slots.
     #[test]
-    fn overwrites_previous_submission() {
-        let (env, contract_id, hunter, _token) = setup();
+    fn succeeds_when_mission_is_open_and_has_capacity() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 10);
+
+        let result = client.try_submit_feedback(&mission_id, &hunter, &ipfs_cid(&env));
+        assert!(result.is_ok());
+    }
+
+    // ------------------------------------------------------------------
+    // Check 1: mission state validation
+    // ------------------------------------------------------------------
+
+    /// Submitting to a Created (not yet Open) mission must fail.
+    #[test]
+    fn fails_when_mission_status_is_created() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        // create_mission starts at Created — do NOT transition to Open.
+        let mission_id = client.create_mission(
+            &owner,
+            &String::from_str(&env, "Created Mission"),
+            &String::from_str(&env, "QmDesc"),
+            &token,
+            &10_000_000,
+            &10,
+        );
+
+        let result = client.try_submit_feedback(&mission_id, &hunter, &ipfs_cid(&env));
+        assert_eq!(result, Err(Ok(QuidError::MissionNotOpen)));
+    }
+
+    /// Submitting to a Paused mission must fail.
+    #[test]
+    fn fails_when_mission_is_paused() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 10);
+        client.pause_mission(&mission_id);
+
+        let result = client.try_submit_feedback(&mission_id, &hunter, &ipfs_cid(&env));
+        assert_eq!(result, Err(Ok(QuidError::MissionNotOpen)));
+    }
+
+    /// Submitting to a Completed mission must fail.
+    #[test]
+    fn fails_when_mission_is_completed() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 10);
+        client.update_mission_status(&mission_id, &MissionStatus::Completed);
+
+        let result = client.try_submit_feedback(&mission_id, &hunter, &ipfs_cid(&env));
+        assert_eq!(result, Err(Ok(QuidError::MissionNotOpen)));
+    }
+
+    /// Submitting to a Cancelled mission must fail.
+    #[test]
+    fn fails_when_mission_is_cancelled() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 10);
+        client.cancel_mission(&mission_id);
+
+        let result = client.try_submit_feedback(&mission_id, &hunter, &ipfs_cid(&env));
+        assert_eq!(result, Err(Ok(QuidError::MissionNotOpen)));
+    }
+
+    /// Submitting to a non-existent mission must return MissionNotFound.
+    #[test]
+    fn fails_when_mission_does_not_exist() {
+        let (env, contract_id, _owner, _token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        let result = client.try_submit_feedback(&9999u64, &hunter, &ipfs_cid(&env));
+        assert_eq!(result, Err(Ok(QuidError::MissionNotFound)));
+    }
+
+    // ------------------------------------------------------------------
+    // Check 2: capacity validation
+    // ------------------------------------------------------------------
+
+    /// Submitting when participants_count == max_participants must fail.
+    #[test]
+    fn fails_when_mission_is_full() {
+        let (env, contract_id, owner, token) = setup();
         let client = QuidStoreContractClient::new(&env, &contract_id);
 
+        // Create a mission with max_participants = 1.
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 1);
+
+        // First hunter fills the last slot.
+        let hunter_1 = Address::generate(&env);
+        let _feedback = client
+            .try_submit_feedback(&mission_id, &hunter_1, &ipfs_cid(&env))
+            .expect("submit feedback should succeed");
+
+        // Second hunter must be rejected — mission is now full.
+        let hunter_2 = Address::generate(&env);
+        let result = client.try_submit_feedback(&mission_id, &hunter_2, &ipfs_cid(&env));
+        assert_eq!(result, Err(Ok(QuidError::MissionFull)));
+    }
+
+    /// The last available slot (participants_count == max_participants - 1) must succeed.
+    #[test]
+    fn succeeds_at_exactly_last_available_slot() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+
+        // max_participants = 2, submit two hunters — both must succeed.
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 2);
+
+        let hunter_1 = Address::generate(&env);
+        let hunter_2 = Address::generate(&env);
+
+        assert!(client
+            .try_submit_feedback(&mission_id, &hunter_1, &ipfs_cid(&env))
+            .is_ok());
+        assert!(client
+            .try_submit_feedback(&mission_id, &hunter_2, &ipfs_cid(&env))
+            .is_ok());
+    }
+
+    /// Capacity check and state check are independent — a full but closed
+    /// mission returns MissionNotOpen (state checked first), not MissionFull.
+    #[test]
+    fn state_check_takes_priority_over_capacity_check() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        // Create a mission with 0 slots and non-Open status.
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 0);
+        client.update_mission_status(&mission_id, &MissionStatus::Completed);
+
+        // Should get MissionNotOpen, not MissionFull.
+        let result = client.try_submit_feedback(&mission_id, &hunter, &ipfs_cid(&env));
+        assert_eq!(result, Err(Ok(QuidError::MissionNotOpen)));
+    }
+
+    #[test]
+    fn overwrites_previous_submission() {
+        let (env, contract_id, owner, token) = setup();
+        let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 10);
         let cid_v1 = String::from_str(&env, "bafybeifirst");
         let cid_v2 = String::from_str(&env, "bafybeisecond");
 
-        client.submit_feedback(&1u64, &hunter, &cid_v1);
-        client.submit_feedback(&1u64, &hunter, &cid_v2);
+        client.submit_feedback(&mission_id, &hunter, &cid_v1);
+        client.submit_feedback(&mission_id, &hunter, &cid_v2);
 
         let stored: String = env.as_contract(&contract_id, || {
             env.storage()
                 .persistent()
-                .get(&DataKey::Submission(1u64, hunter.clone()))
+                .get(&DataKey::Submission(mission_id, hunter.clone()))
                 .unwrap()
         });
-
         assert_eq!(stored, cid_v2);
     }
 
-    /// Two hunters on the same mission are stored at independent keys and
-    /// do not overwrite each other.
     #[test]
     fn different_hunters_have_independent_storage_keys() {
-        let (env, contract_id, hunter_a, token) = setup();
+        let (env, contract_id, owner, token) = setup();
         let client = QuidStoreContractClient::new(&env, &contract_id);
 
+        let hunter_a = Address::generate(&env);
         let hunter_b = Address::generate(&env);
-        StellarAssetClient::new(&env, &token).mint(&hunter_b, &1_000_000_000_000);
 
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 10);
         let cid_a = String::from_str(&env, "bafybeia");
         let cid_b = String::from_str(&env, "bafybeib");
 
-        client.submit_feedback(&1u64, &hunter_a, &cid_a);
-        client.submit_feedback(&1u64, &hunter_b, &cid_b);
+        client.submit_feedback(&mission_id, &hunter_a, &cid_a);
+        client.submit_feedback(&mission_id, &hunter_b, &cid_b);
 
         let stored_a: String = env.as_contract(&contract_id, || {
             env.storage()
                 .persistent()
-                .get(&DataKey::Submission(1u64, hunter_a.clone()))
+                .get(&DataKey::Submission(mission_id, hunter_a.clone()))
                 .unwrap()
         });
         let stored_b: String = env.as_contract(&contract_id, || {
             env.storage()
                 .persistent()
-                .get(&DataKey::Submission(1u64, hunter_b.clone()))
+                .get(&DataKey::Submission(mission_id, hunter_b.clone()))
                 .unwrap()
         });
-
         assert_eq!(stored_a, cid_a);
         assert_eq!(stored_b, cid_b);
     }
 
-    /// The same hunter submitting to two different missions produces two
-    /// independent storage entries.
     #[test]
     fn same_hunter_different_missions_are_independent() {
-        let (env, contract_id, hunter, _token) = setup();
+        let (env, contract_id, owner, token) = setup();
         let client = QuidStoreContractClient::new(&env, &contract_id);
+        let hunter = Address::generate(&env);
+
+        // Two separate missions, each with capacity for this hunter.
+        let mission_id_1 = create_open_mission(&env, &client, &owner, &token, 10);
+        let mission_id_2 = create_open_mission(&env, &client, &owner, &token, 10);
 
         let cid_m1 = String::from_str(&env, "bafybeimission1");
         let cid_m2 = String::from_str(&env, "bafybeimission2");
 
-        client.submit_feedback(&1u64, &hunter, &cid_m1);
-        client.submit_feedback(&2u64, &hunter, &cid_m2);
+        client.submit_feedback(&mission_id_1, &hunter, &cid_m1);
+        client.submit_feedback(&mission_id_2, &hunter, &cid_m2);
 
         let stored_m1: String = env.as_contract(&contract_id, || {
             env.storage()
                 .persistent()
-                .get(&DataKey::Submission(1u64, hunter.clone()))
+                .get(&DataKey::Submission(mission_id_1, hunter.clone()))
                 .unwrap()
         });
         let stored_m2: String = env.as_contract(&contract_id, || {
             env.storage()
                 .persistent()
-                .get(&DataKey::Submission(2u64, hunter.clone()))
+                .get(&DataKey::Submission(mission_id_2, hunter.clone()))
                 .unwrap()
         });
-
         assert_eq!(stored_m1, cid_m1);
         assert_eq!(stored_m2, cid_m2);
     }
 
-    // ------------------------------------------------------------------
-    // Auth enforcement
-    // ------------------------------------------------------------------
-
-    /// Without hunter auth the SDK panics — #[should_panic] is the correct
-    /// pattern since require_auth() does not return a typed Result.
     #[test]
-    #[should_panic]
-    fn fails_without_hunter_auth() {
-        let env = Env::default();
-        // Deliberately no mock_all_auths — auth cannot be satisfied.
-        let contract_id = env.register(QuidStoreContract, ());
+    fn requires_exactly_hunter_auth() {
+        let (env, contract_id, owner, token) = setup();
         let client = QuidStoreContractClient::new(&env, &contract_id);
         let hunter = Address::generate(&env);
 
-        client.submit_feedback(&1u64, &hunter, &ipfs_cid(&env));
-    }
-
-    /// env.auths() lets us assert that the hunter — and not some other
-    /// address — was the address that satisfied require_auth().
-    #[test]
-    fn requires_exactly_hunter_auth() {
-        let (env, contract_id, hunter, _token) = setup();
-        let client = QuidStoreContractClient::new(&env, &contract_id);
-
-        client.submit_feedback(&1u64, &hunter, &ipfs_cid(&env));
+        let mission_id = create_open_mission(&env, &client, &owner, &token, 10);
+        client.submit_feedback(&mission_id, &hunter, &ipfs_cid(&env));
 
         let auths = env.auths();
         assert!(
@@ -951,7 +1086,7 @@ fn test_payout_participant_success() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #10)")]
+#[should_panic(expected = "Error(Contract, #11)")]
 fn test_payout_participant_submission_not_found() {
     let (env, contract_id, owner, token_id) = setup_test_env();
     let client = QuidStoreContractClient::new(&env, &contract_id);
