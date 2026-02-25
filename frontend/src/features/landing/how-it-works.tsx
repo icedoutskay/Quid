@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, type Variants } from "framer-motion";
+import { useState } from "react";
 
 const steps = [
   {
@@ -69,6 +70,8 @@ const cardVariants: Variants = {
 };
 
 export const HowItWorksSection = () => {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   return (
     <motion.section
       className="relative py-16 sm:py-24 md:py-32 lg:py-40 xl:py-[11.25rem] px-4 sm:px-6 lg:px-8 overflow-hidden"
@@ -114,71 +117,98 @@ export const HowItWorksSection = () => {
         whileInView="visible"
         viewport={{ once: true, amount: 0.2 }}
       >
-        {steps.map((step, index) => (
-          <motion.div
-            key={step.id}
-            className="group relative flex-1 min-h-[466px] rounded-3xl overflow-hidden cursor-pointer"
-            variants={cardVariants}
-            whileHover="hover"
-          >
-            {/* Background Image */}
-            <div
-              className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110"
-              style={{
-                backgroundImage: `url('${step.image}')`,
-                backgroundPosition: "center",
-              }}
-            />
+        {steps.map((step, index) => {
+          const isExpanded = expandedId === step.id;
 
-            {/* Dark Overlay */}
-            <div className="absolute inset-0 bg-[#110E13] opacity-80 group-hover:opacity-70 transition-opacity duration-300" />
+          return (
+            <motion.div
+              key={step.id}
+              className="group relative flex-1 min-h-[466px] rounded-3xl overflow-hidden cursor-pointer"
+              variants={cardVariants}
+              whileHover="hover"
+              onMouseEnter={() => setExpandedId(step.id)}
+              onMouseLeave={() => setExpandedId(null)}
+            >
+              {/* Background Image */}
+              <div
+                className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110"
+                style={{
+                  backgroundImage: `url('${step.image}')`,
+                  backgroundPosition: "center",
+                }}
+              />
 
-            {/* Content Container */}
-            <div className="relative h-full flex flex-col justify-between p-8 z-10 text-white">
-              {/* Top Section - Watermark Number */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <motion.h3
-                    className="text-2xl md:text-3xl font-bold leading-tight"
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1 }}
-                  >
-                    {step.title}
-                  </motion.h3>
-                  <motion.p
-                    className="text-sm text-white/70 mt-2"
-                    initial={{ opacity: 0 }}
-                    whileInView={{ opacity: 1 }}
-                    transition={{ duration: 0.5, delay: 0.2 }}
-                  >
-                    {step.description}
-                  </motion.p>
-                </div>
+              {/* Dark Overlay */}
+              <div className="absolute inset-0 bg-[#110E13] opacity-80 group-hover:opacity-70 transition-opacity duration-300" />
 
-                {/* Watermark Number */}
-                <motion.span
-                  className="text-7xl md:text-8xl font-bold text-white/10 leading-none"
-                  initial={{ opacity: 0 }}
-                  whileInView={{ opacity: 0.1 }}
-                  transition={{ duration: 0.6, delay: 0.3 }}
-                >
-                  {step.number}
-                </motion.span>
+              {/* Content Container */}
+              <div className="relative h-full flex flex-col justify-between p-8 z-10 text-white">
+                {isExpanded ? (
+                  <>
+                    {/* Expanded Content */}
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <motion.h3
+                          className="text-2xl md:text-3xl font-bold leading-tight"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          {step.title}
+                        </motion.h3>
+                        <motion.p
+                          className="text-sm text-white/70 mt-2"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.3, delay: 0.1 }}
+                        >
+                          {step.description}
+                        </motion.p>
+                      </div>
+
+                      {/* Watermark Number */}
+                      <motion.span
+                        className="text-7xl md:text-8xl font-bold text-white/10 leading-none"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.1 }}
+                        transition={{ duration: 0.3, delay: 0.2 }}
+                      >
+                        {step.number}
+                      </motion.span>
+                    </div>
+
+                    {/* Bottom Section - CTA */}
+                    <motion.a
+                      href="#"
+                      className="text-sm text-purple-300 hover:text-purple-200 font-semibold flex items-center gap-2 transition-colors duration-300"
+                      whileHover={{ x: 4 }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3, delay: 0.2 }}
+                    >
+                      {step.cta}
+                      <span className="text-lg">→</span>
+                    </motion.a>
+                  </>
+                ) : (
+                  <>
+                    {/* Collapsed Content - Just Number */}
+                    <div className="flex-1 flex items-center justify-center">
+                      <motion.span
+                        className="text-8xl md:text-9xl font-bold text-white/20"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        {step.number}
+                      </motion.span>
+                    </div>
+                  </>
+                )}
               </div>
-
-              {/* Bottom Section - CTA */}
-              <motion.a
-                href="#"
-                className="text-sm text-purple-300 hover:text-purple-200 font-semibold flex items-center gap-2 transition-colors duration-300"
-                whileHover={{ x: 4 }}
-              >
-                {step.cta}
-                <span className="text-lg">→</span>
-              </motion.a>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </motion.div>
 
       {/* Explore Quests Button */}
